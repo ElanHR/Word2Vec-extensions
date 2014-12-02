@@ -473,11 +473,11 @@ void *TrainModelThread(void *id) {
     }
 
     word = sen[sentence_position];
-    if (word == -1) continue; //skips white spaces and OOV
+    if (word == -1) continue; // skips white spaces and OOV
     for (c = 0; c < layer1_size; c++) neu1[c] = 0;
     for (c = 0; c < layer1_size; c++) neu1e[c] = 0;
     next_random = next_random * (unsigned long long)25214903917 + 11;
-    b = next_random % window;
+    b = next_random % window; // decide our window width
     
 
     if (cbow) {  //train the cbow architecture
