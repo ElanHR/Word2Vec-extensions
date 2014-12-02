@@ -423,6 +423,7 @@ void *TrainModelThread(void *id) {
 
   while (1) {
 
+    // occasionally print out progress and decrease our alpha
     if (word_count - last_word_count > 10000) {
       word_count_actual += word_count - last_word_count;
       last_word_count = word_count;
@@ -437,9 +438,10 @@ void *TrainModelThread(void *id) {
       if (alpha < starting_alpha * 0.0001) alpha = starting_alpha * 0.0001;
     }
 
+    // builds a sentence if we don't have one
     if (sentence_length == 0) {
       while (1) {
-        word = ReadWordIndex(fi);
+        word = ReadWordIndex(fi); // get vocab idx for current word
         if (feof(fi)) break;
         if (word == -1) continue;
         word_count++;
@@ -456,6 +458,9 @@ void *TrainModelThread(void *id) {
       }
       sentence_position = 0;
     }
+
+    // if end of file or we've completed our training for this thread
+    // start a new iteration
     if (feof(fi) || (word_count > train_words / num_threads)) {
       word_count_actual += word_count - last_word_count;
       local_iter--;
@@ -466,12 +471,15 @@ void *TrainModelThread(void *id) {
       fseek(fi, file_size / (long long)num_threads * (long long)id, SEEK_SET);
       continue;
     }
+
     word = sen[sentence_position];
-    if (word == -1) continue;
+    if (word == -1) continue; //skips white spaces and OOV
     for (c = 0; c < layer1_size; c++) neu1[c] = 0;
     for (c = 0; c < layer1_size; c++) neu1e[c] = 0;
     next_random = next_random * (unsigned long long)25214903917 + 11;
     b = next_random % window;
+    
+
     if (cbow) {  //train the cbow architecture
       // in -> hidden
       cw = 0;
@@ -486,6 +494,7 @@ void *TrainModelThread(void *id) {
       }
       if (cw) {
         for (c = 0; c < layer1_size; c++) neu1[c] /= cw;
+        
         if (hs) for (d = 0; d < vocab[word].codelen; d++) {
           f = 0;
           l2 = vocab[word].point[d] * layer1_size;
