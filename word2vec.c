@@ -39,7 +39,7 @@ struct vocab_word {
   int *point;
   char *word, *code, codelen;
   // 3 synonyms? 
-  std::vector<std::string> synonyms; //array of pointers
+  std::vector<std::string> synonyms; //TODO how allocate ? do we need to?
 };
 
 char  train_file[MAX_STRING], 
@@ -227,6 +227,7 @@ int AddWordToVocab(char *word) {
   vocab[vocab_size].word = (char *)calloc(length, sizeof(char));
   strcpy(vocab[vocab_size].word, word);
   vocab[vocab_size].cn = 0;
+  // TODO test? is this memory being allocated properly?
   vocab[vocab_size].synonyms = GetSynonymList(wordstr, num_synonyms);
   vocab_size++;
   // Reallocate memory if needed
