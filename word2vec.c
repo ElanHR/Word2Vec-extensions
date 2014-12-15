@@ -22,6 +22,7 @@
 #include <vector>
 #include <sstream>
 #include <iostream>
+#include <algorithm>
 #include<mysql/mysql.h>
 using namespace std;
 
@@ -49,8 +50,8 @@ int binary = 0,
     window = 5, 
     min_count = 5, 
     num_threads = 12, 
-    min_reduce = 1,
-    num_synonyms = 3;
+    min_reduce = 1;
+unsigned int num_synonyms = 3;
 const char* args[] = {"01", "02", "03"};
 
 struct vocab_word {
@@ -185,65 +186,55 @@ int InitializeWordnetMysql(string user, string passwd) {
     return 0;
 }
 
-string GetSynonymQuery(string word, int num_synonyms) {
+string GetSynonymQuery(string word, unsigned int num_synonyms) {
     std::ostringstream query;
     query << "select lemma from words where wordid in (select wordid from senses where synsetid in (select synsetid from senses where wordid in (select wordid from words where lemma = '"<< word << "'))) limit " << num_synonyms;
     return query.str();
 }
 
-void GetSynonymList(string word, int num_synonyms, vector<string>* synonyms) {
-    cout << endl << "getting synonyms for:" << word << endl;
-    string query = GetSynonymQuery(word, num_synonyms*100);
-    cout << "query running:" << endl << query << endl;
-    cout << "num synonyms:" << num_synonyms << endl;
+void GetSynonymList(string word, unsigned int num_synonyms, vector<string>* synonyms) {
+    string wordlower = word;
+    transform(wordlower.begin(), wordlower.end(), wordlower.begin(), ::tolower);
+    //cout << endl << "getting synonyms for:" << wordlower << endl;
+    string query = GetSynonymQuery(wordlower, num_synonyms*100);
     synonyms->reserve(num_synonyms);
-    cout << "reserved:" << num_synonyms << endl;
     if(mysql_query(&mysql, query.c_str())!=0) // success
     {
         printf( "Failed to find any records and caused an error:%s\n", mysql_error(&mysql));
     }
     else {
-        printf("%ld Record Found\n",(long) mysql_affected_rows(&mysql));
         result = mysql_store_result(&mysql);
-        cout << "stored result" << endl;
         if (result != NULL)  // there are rows
         {
-            cout << "there are rows" << endl;
             int num_fields = mysql_num_fields(result);
-            cout << "num fields:" << num_fields << endl;
-            int j = 0;
-            cout << "error:" << mysql_error(&mysql) << " errno:" << mysql_errno(&mysql) << endl;
-            while ((row = mysql_fetch_row(result)) != NULL) 
-            {
-                cout << "j:" << j << endl;
-                cout << "error:" << mysql_error(&mysql) << " errno:" << mysql_errno(&mysql) << endl;
+            //cout << "error:" << mysql_error(&mysql) << " errno:" << mysql_errno(&mysql) << endl;
+            while ((row = mysql_fetch_row(result)) != NULL) {
+                //cout << "error:" << mysql_error(&mysql) << " errno:" << mysql_errno(&mysql) << endl;
                 unsigned long *lengths = mysql_fetch_lengths(result);
-                cout << "got lengths:" << endl;
                 for(int i = 0; i < num_fields; i++) 
                 {
-                    cout << "i:" << i << endl;
-                    cout << "lengths[i]:" << (int) lengths[i] << endl;
                     char rowcstr[256];
                     sprintf(rowcstr, "%.*s", (int) lengths[i], row[i] ? row[i] : "NULL"); 
-                    printf("rowcstr:'%s'\n", rowcstr);
                     // only assign if in vocab, else skip
                     int search_result = SearchVocab(rowcstr);
-                    if(search_result != -1) {
-                        cout << "assigned! '"<< rowcstr << "'" << endl;
-                        (*synonyms)[j] = rowcstr;
-                        j++;
+                    string rowstr = rowcstr;
+                    transform(rowstr.begin(), rowstr.end(), rowstr.begin(), ::tolower);
+                    // also skip synonyms that are identical the word itself
+                    if(search_result != -1 && rowstr.compare(wordlower) != 0) {
+                        cout << "synonym for '"<< wordlower <<"'! '"<< rowstr << "'" << endl;
+                        synonyms->push_back(rowcstr);
                     }
                     else {
-                        cout << "((not in vocab:'"<< rowcstr << "'))" << endl;
+                        //cout << "((not in vocab:'"<< rowcstr << "'))" << endl;
                     }
-                    cout << "done " << i << endl;
                 }
-                printf("\n");
+                if(synonyms->size() == num_synonyms) {
+                    break;
+                }
             }
             // and pad just in case
-            while (j < num_synonyms) {
-                (*synonyms)[j] = "";
-                j++;
+            while (synonyms->size() < num_synonyms) {
+                synonyms->push_back("");
             }
             mysql_free_result(result);
         }
