@@ -208,14 +208,15 @@ void GetSynonymList(string word, int num_synonyms, vector<string>* synonyms) {
         cout << "stored result" << endl;
         if (result != NULL)  // there are rows
         {
-            cout << "error:" << mysql_error(&mysql) << " errno:" << mysql_errno(&mysql) << endl;
             cout << "there are rows" << endl;
             int num_fields = mysql_num_fields(result);
             cout << "num fields:" << num_fields << endl;
             int j = 0;
+            cout << "error:" << mysql_error(&mysql) << " errno:" << mysql_errno(&mysql) << endl;
             while ((row = mysql_fetch_row(result)) != NULL) 
             {
                 cout << "j:" << j << endl;
+                cout << "error:" << mysql_error(&mysql) << " errno:" << mysql_errno(&mysql) << endl;
                 unsigned long *lengths = mysql_fetch_lengths(result);
                 cout << "got lengths:" << endl;
                 for(int i = 0; i < num_fields; i++) 
@@ -879,7 +880,9 @@ int main(int argc, char **argv) {
     expTable[i] = exp((i / (real)EXP_TABLE_SIZE * 2 - 1) * MAX_EXP); // Precompute the exp() table
     expTable[i] = expTable[i] / (expTable[i] + 1);                   // Precompute f(x) = x / (x + 1)
   }
-  InitializeWordnetMysql(MYSQL_USER, MYSQL_PASSWD);
+  if(InitializeWordnetMysql(MYSQL_USER, MYSQL_PASSWD) != 0) {
+    return 1;
+  }
   TrainModel();
   return 0;
 }
