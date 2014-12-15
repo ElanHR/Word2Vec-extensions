@@ -217,6 +217,7 @@ vector<string> GetSynonymList(string word, int num_synonyms) {
             }
         }
     }
+    return list;
 }
 
 // Adds a word to the vocabulary
