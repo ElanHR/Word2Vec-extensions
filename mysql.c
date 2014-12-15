@@ -31,17 +31,29 @@ int max_array(unsigned long* a, int num_elements)
 
 main()
 {
-        printf("Enter number synonyms desired: ");
+    printf("Enter word: ");
+    char word[256];
+    int r = scanf("%s", word);
+    if(r == EOF) {
+        strcpy(word, "bird");
+    }
+    if (r <= 0) {
+        while (fgetc(stdin) != '\n'); // Read until a newline is found
+        strcpy(word, "bird");
+    }
+    printf("\nEnter number synonyms desired: ");
     MYSQL mysql;
     MYSQL_RES *result;
     MYSQL_ROW row;
     int num_synonyms;
-    scanf("%d", &num_synonyms);
-    if (result <= 0) {
+    r = scanf("%d", &num_synonyms);
+    if(r == EOF) {
+        num_synonyms = 3;
+    }
+    if (r <= 0) {
         while (fgetc(stdin) != '\n'); // Read until a newline is found
         num_synonyms = 3;
     }
-    char* word = "bird";
     int querylen = GetNumDigits(num_synonyms) + strlen("select lemma from words where wordid in (select wordid from senses where synsetid in (select synsetid from senses where wordid in (select wordid from words where lemma = ''))) limit ");
     // assemble query and get length of string, excluding the word in question
 
