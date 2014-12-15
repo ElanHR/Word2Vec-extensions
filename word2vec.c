@@ -17,6 +17,12 @@
 #include <string.h>
 #include <math.h>
 #include <pthread.h>
+#include <cstdio>
+#include <string>
+#include <vector>
+#include <sstream>
+#include<mysql/mysql.h>
+using namespace std;
 
 #define MAX_STRING 100
 #define EXP_TABLE_SIZE 1000
@@ -32,6 +38,8 @@ struct vocab_word {
   long long cn;
   int *point;
   char *word, *code, codelen;
+  // 3 synonyms? 
+  std::vector<std::string> synonyms; //array of pointers
 };
 
 char  train_file[MAX_STRING], 
@@ -48,7 +56,8 @@ int binary = 0,
     window = 5, 
     min_count = 5, 
     num_threads = 12, 
-    min_reduce = 1;
+    min_reduce = 1,
+    num_synonyms = 3;
 
 int *vocab_hash;
 
@@ -76,6 +85,10 @@ clock_t start;
 int hs = 0, negative = 5;
 const int table_size = 1e8;
 int *table;
+
+MYSQL mysql;
+MYSQL_RES *result;
+MYSQL_ROW row;
 
 void InitUnigramTable() {
   int a, i;
@@ -145,6 +158,67 @@ int ReadWordIndex(FILE *fin) {
   return SearchVocab(word);
 }
 
+int InitializeWordnetMysql(char* user, char* passwd) {
+    mysql_init(&mysql);
+    if(!mysql_real_connect(&mysql, "localhost", "root", "root", "wordnet",0,NULL,0))
+        {
+                printf( "Failed to connect to localhost: Error: %s\n", mysql_error(&mysql));
+                return 1;
+        }
+    if(mysql_select_db(&mysql,"wordnet")==0)/*success*/
+    {
+            printf( "Database wordnet Selected\n");
+    }
+    else 
+    {
+            printf( "Failed to connect to Database wordnet: Error: %s\n", mysql_error(&mysql));
+            return 1;
+    }
+    return 0;
+}
+
+string GetSynonymQuery(string word, int num_synonyms) {
+    std::ostringstream query;
+    query << "select top " << num_synonyms << " lemma from words where wordid in (select wordid from senses where synsetid in (select synsetid from senses where wordid in (select wordid from words where lemma = '"<< word << "')))";
+    return query.str();
+}
+
+vector<string> GetSynonymList(string word, int num_synonyms) {
+    string query = GetSynonymQuery(word, num_synonyms);
+    vector<string> list;
+    if(mysql_query(&mysql, query.c_str())!=0) // success
+    {
+        printf( "Failed to find any records and caused an error:%s\n", mysql_error(&mysql));
+    }
+    else {
+        printf("%ld Record Found\n",(long) mysql_affected_rows(&mysql));
+        result = mysql_store_result(&mysql);
+        if (result)  // there are rows
+        {
+            int num_fields = mysql_num_fields(result);
+            while ((row = mysql_fetch_row(result))) 
+            {
+                unsigned long *lengths = mysql_fetch_lengths(result);
+                for(int i = 0; i < num_fields; i++) 
+                {
+                    printf("[%.*s] ", (int) lengths[i], row[i] ? row[i] : "NULL"); 
+                    list.push_back(row[i]);
+                }
+                printf("\n");
+            }
+            mysql_free_result(result);
+        }
+        else  // mysql_store_result() returned nothing
+        {
+            if(mysql_field_count(&mysql) > 0)
+            // mysql_store_result() should have returned data
+            {
+                printf( "Error getting records: %s\n", mysql_error(&mysql));
+            }
+        }
+    }
+}
+
 // Adds a word to the vocabulary
 int AddWordToVocab(char *word) {
   unsigned int hash, length = strlen(word) + 1;
@@ -152,6 +226,7 @@ int AddWordToVocab(char *word) {
   vocab[vocab_size].word = (char *)calloc(length, sizeof(char));
   strcpy(vocab[vocab_size].word, word);
   vocab[vocab_size].cn = 0;
+  vocab[vocab_size].synonyms = GetSynonymList(word, num_synonyms);
   vocab_size++;
   // Reallocate memory if needed
   if (vocab_size + 2 >= vocab_max_size) {
@@ -727,6 +802,8 @@ int main(int argc, char **argv) {
     printf("\t\tThe vocabulary will be read from <file>, not constructed from the training data\n");
     printf("\t-cbow <int>\n");
     printf("\t\tUse the continuous bag of words model; default is 1 (use 0 for skip-gram model)\n");
+    printf("\t-numsyns <int>\n");
+    printf("\t\tNumber of synonyms to use; default is 3\n");
     printf("\nExamples:\n");
     printf("./word2vec -train data.txt -output vec.txt -size 200 -window 5 -sample 1e-4 -negative 5 -hs 0 -binary 0 -cbow 1 -iter 3\n\n");
     return 0;
@@ -752,6 +829,7 @@ int main(int argc, char **argv) {
   if ((i = ArgPos((char *)"-iter", argc, argv)) > 0) iter = atoi(argv[i + 1]);
   if ((i = ArgPos((char *)"-min-count", argc, argv)) > 0) min_count = atoi(argv[i + 1]);
   if ((i = ArgPos((char *)"-classes", argc, argv)) > 0) classes = atoi(argv[i + 1]);
+  if ((i = ArgPos((char *)"-numsyms", argc, argv)) > 0) num_synonyms = atoi(argv[i + 1]);
   vocab = (struct vocab_word *)calloc(vocab_max_size, sizeof(struct vocab_word));
   vocab_hash = (int *)calloc(vocab_hash_size, sizeof(int));
   expTable = (real *)malloc((EXP_TABLE_SIZE + 1) * sizeof(real));
