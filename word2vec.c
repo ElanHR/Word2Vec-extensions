@@ -221,12 +221,13 @@ vector<string> GetSynonymList(string word, int num_synonyms) {
 
 // Adds a word to the vocabulary
 int AddWordToVocab(char *word) {
+  string wordstr(word);
   unsigned int hash, length = strlen(word) + 1;
   if (length > MAX_STRING) length = MAX_STRING;
   vocab[vocab_size].word = (char *)calloc(length, sizeof(char));
   strcpy(vocab[vocab_size].word, word);
   vocab[vocab_size].cn = 0;
-  vocab[vocab_size].synonyms = GetSynonymList(word, num_synonyms);
+  vocab[vocab_size].synonyms = GetSynonymList(wordstr, num_synonyms);
   vocab_size++;
   // Reallocate memory if needed
   if (vocab_size + 2 >= vocab_max_size) {
