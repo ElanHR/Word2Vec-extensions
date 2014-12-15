@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <iostream>
 #include<mysql/mysql.h>
 using namespace std;
 
@@ -33,14 +34,6 @@ using namespace std;
 const int vocab_hash_size = 30000000;  // Maximum 30 * 0.7 = 21M words in the vocabulary
 
 typedef float real;                    // Precision of float numbers
-
-struct vocab_word {
-  long long cn;
-  int *point;
-  char *word, *code, codelen;
-  // 3 synonyms? 
-  std::vector<std::string> synonyms; //TODO how allocate ? do we need to?
-};
 
 char  train_file[MAX_STRING], 
       output_file[MAX_STRING];
@@ -58,6 +51,20 @@ int binary = 0,
     num_threads = 12, 
     min_reduce = 1,
     num_synonyms = 3;
+const char* args[] = {"01", "02", "03"};
+
+struct vocab_word {
+  long long cn;
+  int *point;
+  char *word, *code, codelen;
+  // 3 synonyms? 
+  //vector<string> synonyms = string(args, std::end(args)); //TODO how allocate ? do we need to?
+  vector<string>* synonyms;
+  vocab_word() {
+    cout << "constructor" << endl;
+    synonyms = new vector<string>();
+  }
+};
 
 int *vocab_hash;
 
@@ -89,6 +96,7 @@ int *table;
 MYSQL mysql;
 MYSQL_RES *result;
 MYSQL_ROW row;
+string MYSQL_USER = "root", MYSQL_PASSWD = "root";
 
 void InitUnigramTable() {
   int a, i;
@@ -158,9 +166,9 @@ int ReadWordIndex(FILE *fin) {
   return SearchVocab(word);
 }
 
-int InitializeWordnetMysql(char* user, char* passwd) {
+int InitializeWordnetMysql(string user, string passwd) {
     mysql_init(&mysql);
-    if(!mysql_real_connect(&mysql, "localhost", "root", "root", "wordnet",0,NULL,0))
+    if(!mysql_real_connect(&mysql, "localhost", user.c_str(), passwd.c_str(), "wordnet",0,NULL,0))
         {
                 printf( "Failed to connect to localhost: Error: %s\n", mysql_error(&mysql));
                 return 1;
@@ -179,16 +187,21 @@ int InitializeWordnetMysql(char* user, char* passwd) {
 
 string GetSynonymQuery(string word, int num_synonyms) {
     std::ostringstream query;
-    query << "select top " << num_synonyms << " lemma from words where wordid in (select wordid from senses where synsetid in (select synsetid from senses where wordid in (select wordid from words where lemma = '"<< word << "')))";
+    query << "select lemma from words where wordid in (select wordid from senses where synsetid in (select synsetid from senses where wordid in (select wordid from words where lemma = '"<< word << "'))) limit " << num_synonyms;
     return query.str();
 }
 
-vector<string> GetSynonymList(string word, int num_synonyms) {
+void GetSynonymList(string word, int num_synonyms, vector<string>* synonyms) {
+    cout << "getting synonyms for:" << word << endl;
     string query = GetSynonymQuery(word, num_synonyms);
-    vector<string> list;
+    cout << "query running:" << endl << query << endl;
+    cout << "num synonyms:" << num_synonyms << endl;
+    synonyms->reserve(num_synonyms);
+    cout << "reserved:" << num_synonyms << endl;
     if(mysql_query(&mysql, query.c_str())!=0) // success
     {
         printf( "Failed to find any records and caused an error:%s\n", mysql_error(&mysql));
+        cerr << "Failed to find any records and caused an error:" << mysql_error(&mysql) << endl;
     }
     else {
         printf("%ld Record Found\n",(long) mysql_affected_rows(&mysql));
@@ -196,15 +209,25 @@ vector<string> GetSynonymList(string word, int num_synonyms) {
         if (result)  // there are rows
         {
             int num_fields = mysql_num_fields(result);
+            cout << "num fields:" << num_fields << endl;
+            int j = 0;
             while ((row = mysql_fetch_row(result))) 
             {
+                cout << "j:" << j << endl;
                 unsigned long *lengths = mysql_fetch_lengths(result);
+                cout << "got lengths:" << endl;
                 for(int i = 0; i < num_fields; i++) 
                 {
-                    printf("[%.*s] ", (int) lengths[i], row[i] ? row[i] : "NULL"); 
-                    list.push_back(row[i]);
+                    cout << "i:" << i << endl;
+                    string rowstr = row[i];
+                    cout << "lengths[i]:" << (int) lengths[i] << endl << endl;
+                    cout << "row[i]:" <<(row[i] ? rowstr : NULL) << endl << endl;
+                    //printf("[%.*s] ", (int) lengths[i], row[i] ? row[i] : "NULL"); 
+                    //if(i == 0) list.push_back(row[i]);
+                    if(i == 0) synonyms->at(j) = rowstr;
                 }
                 printf("\n");
+                j++;
             }
             mysql_free_result(result);
         }
@@ -217,7 +240,7 @@ vector<string> GetSynonymList(string word, int num_synonyms) {
             }
         }
     }
-    return list;
+    //return list;
 }
 
 // Adds a word to the vocabulary
@@ -228,8 +251,9 @@ int AddWordToVocab(char *word) {
   vocab[vocab_size].word = (char *)calloc(length, sizeof(char));
   strcpy(vocab[vocab_size].word, word);
   vocab[vocab_size].cn = 0;
+  vocab[vocab_size].synonyms = new vector<string>();
   // TODO test? is this memory being allocated properly?
-  vocab[vocab_size].synonyms = GetSynonymList(wordstr, num_synonyms);
+  GetSynonymList(wordstr, num_synonyms, vocab[vocab_size].synonyms);
   vocab_size++;
   // Reallocate memory if needed
   if (vocab_size + 2 >= vocab_max_size) {
@@ -840,6 +864,7 @@ int main(int argc, char **argv) {
     expTable[i] = exp((i / (real)EXP_TABLE_SIZE * 2 - 1) * MAX_EXP); // Precompute the exp() table
     expTable[i] = expTable[i] / (expTable[i] + 1);                   // Precompute f(x) = x / (x + 1)
   }
+  InitializeWordnetMysql(MYSQL_USER, MYSQL_PASSWD);
   TrainModel();
   return 0;
 }
