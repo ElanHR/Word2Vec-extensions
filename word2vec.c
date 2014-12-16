@@ -24,6 +24,18 @@
 #include <iostream>
 #include <algorithm>
 #include<mysql/mysql.h>
+
+
+#include <sstream>
+#include <fstream>
+#include <boost/serialization/string.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/serialization/serialization.hpp>
+#include <boost/serialization/map.hpp>
+
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
+
 using namespace std;
 
 #define MAX_STRING 100
@@ -40,7 +52,9 @@ char  train_file[MAX_STRING],
       output_file[MAX_STRING];
 
 char  save_vocab_file[MAX_STRING], 
-      read_vocab_file[MAX_STRING];
+      read_vocab_file[MAX_STRING],
+      save_synonyms_file[MAX_STRING],
+      read_synonyms_file[MAX_STRING];
 
 struct vocab_word *vocab;
 
@@ -66,6 +80,8 @@ struct vocab_word {
     synonyms = new vector<string>();
   }
 };
+
+std::map<int,std::vector<int>> synonymMap;
 
 int *vocab_hash;
 
@@ -472,6 +488,34 @@ void ReadVocab() {
   fclose(fin);
 }
 
+
+void SaveSynonyms(){
+  // std::ifstream fs(
+  //   save_synonyms_file,
+  //   std::ios_base::binary | std::ios_base::in
+  // );
+  //std::stringstream ss;
+  // boost::archive::text_oarchive oarch(fs);
+  std::ofstream ofs(save_synonyms_file);
+  boost::archive::text_oarchive oa(ofs);
+  
+  oa << synonymMap;
+}
+
+void ReadSynonyms(){
+  // std::ifstream fs(
+  //   read_synonyms_file,
+  //   std::ios_base::binary | std::ios_base::in
+  // );
+
+  // std::stringstream ss;
+  // boost::archive::text_iarchive iarch(ss);
+  std::ifstream ifs(read_synonyms_file);
+  boost::archive::text_iarchive ia(ifs);
+
+  ia >> synonymMap;
+}
+
 void InitNet() {
   long long a, b;
   unsigned long long next_random = 1;
@@ -720,6 +764,10 @@ void TrainModel() {
   starting_alpha = alpha;
   if (read_vocab_file[0] != 0) ReadVocab(); else LearnVocabFromTrainFile();
   if (save_vocab_file[0] != 0) SaveVocab();
+
+  if (read_synonyms_file[0] != 0) ReadSynonyms(); else LearnVocabFromTrainFile();
+  if (save_synonyms_file[0] != 0) SaveSynonyms();
+
   if (output_file[0] == 0) return;
   InitNet();
   if (negative > 0) InitUnigramTable();
@@ -849,6 +897,10 @@ int main(int argc, char **argv) {
   if ((i = ArgPos((char *)"-train", argc, argv)) > 0) strcpy(train_file, argv[i + 1]);
   if ((i = ArgPos((char *)"-save-vocab", argc, argv)) > 0) strcpy(save_vocab_file, argv[i + 1]);
   if ((i = ArgPos((char *)"-read-vocab", argc, argv)) > 0) strcpy(read_vocab_file, argv[i + 1]);
+
+  if ((i = ArgPos((char *)"-save-synonyms", argc, argv)) > 0) strcpy(save_synonyms_file, argv[i + 1]);
+  if ((i = ArgPos((char *)"-read-synonyms", argc, argv)) > 0) strcpy(read_synonyms_file, argv[i + 1]);
+  
   if ((i = ArgPos((char *)"-debug", argc, argv)) > 0) debug_mode = atoi(argv[i + 1]);
   if ((i = ArgPos((char *)"-binary", argc, argv)) > 0) binary = atoi(argv[i + 1]);
   if ((i = ArgPos((char *)"-cbow", argc, argv)) > 0) cbow = atoi(argv[i + 1]);
