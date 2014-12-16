@@ -17,6 +17,8 @@ word-analogy : word-analogy.c
 compute-accuracy : compute-accuracy.c
 	$(CC) compute-accuracy.c -o compute-accuracy $(CFLAGS)
 	chmod +x *.sh
+SynonymMap : SynonymMap.cpp
+	$(CPLUS) SynonymMap.cpp -o generateSynonymMap $(MYSQLFLAGS) $(CFLAGS)
 
 clean:
 	rm -rf word2vec word2phrase distance word-analogy compute-accuracy
